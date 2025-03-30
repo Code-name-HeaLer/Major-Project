@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project adapts the Graph Convolutional Network (GCN) and Transformer-based architecture for anomaly detection in household electrical appliances. The model uses reconstruction error to detect anomalies in the UK-DALE dataset. Synthetic anomalies (e.g., sudden spikes) are injected into the test data, and evaluation metrics (accuracy, precision, recall, F1-score) are computed.
+This project adapts the Graph Convolutional Network (GCN) and Transformer-based architecture for anomaly detection in household electrical appliances. The model uses reconstruction error to detect anomalies in the .npz files, which are the appliance data of a dishwasher. To evaluate the model, There are anomalous datasets as well. Evaluation metrics (accuracy, precision, recall, F1-score) are computed.
 
 ---
 
@@ -117,10 +117,7 @@ Adapt the paper’s seq2seq architecture for reconstruction:
 1. **Graph Construction**:
    - Challenge: Entropy calculation requires appliance-specific data.
    - Solution: Use aggregate signal entropy for simplicity.
-2. **Anomaly Injection**:
-   - Challenge: Synthetic spikes may not mimic real anomalies.
-   - Solution: Validate with real-world anomaly patterns (if available).
-3. **Threshold Tuning**:
+2. **Threshold Tuning**:
    - Challenge: Fixed thresholds may not generalize.
    - Solution: Dynamic thresholds based on rolling window statistics.
 
