@@ -5,6 +5,9 @@ import math
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os
+from sklearn.cluster import KMeans
+from scipy.stats import entropy
+import seaborn as sns
 
 class PositionalEncoding(nn.Module):
     """Injects positional information into the input embeddings."""
@@ -121,85 +124,93 @@ def evaluate_model_gcn(model, test_loader, device, criterion, threshold, node_fe
     return np.array(true_labels), np.array(predictions), np.array(test_losses), sample_reconstructions
 
 
-def plot_reconstructions(val_loader, sample_recons_test, model, device, node_features, adj_matrix, scaler=None, n_examples=1):
+def plot_reconstructions(val_loader, sample_recons_test, model, device, node_features, adj_matrix, scaler=None, n_examples=1, plots_dir='plots'):
     """Plots original vs. reconstructed signals for normal and anomalous examples."""
-    print("Generating reconstruction plots...")
-    plt.figure(figsize=(15, 10))
-    num_plots = 0
+    print(f"Generating reconstruction plots to {plots_dir}...")
+    plt.style.use('seaborn-v0_8-whitegrid') # Use a modern style
 
-    # 1. Plot Anomalous Example (from test set evaluation)
+    # Define consistent colors
+    original_color = '#1f77b4' # Muted Blue
+    reconstructed_color = '#ff7f0e' # Safety Orange
+    anomaly_color = '#d62728' # Muted Red for original anomaly
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True) # Slightly adjusted size
+    plot_count = 0
+
+    # --- Plot Anomalous Example --- 
+    ax1 = axes[0]
     if sample_recons_test['anomaly']:
-        num_plots += 1
-        plt.subplot(2, 1, num_plots) # Adjust subplot grid if adding more examples
         original = sample_recons_test['anomaly']['original']
         reconstructed = sample_recons_test['anomaly']['reconstructed']
         loss = sample_recons_test['anomaly']['loss']
 
-        # Inverse transform if scaler exists
         if scaler:
             original = scaler.inverse_transform(original.reshape(-1, 1)).flatten()
             reconstructed = scaler.inverse_transform(reconstructed.reshape(-1, 1)).flatten()
 
-        plt.plot(original, label='Original Anomalous Signal', color='red', alpha=1.0)
-        plt.plot(reconstructed, label=f'Reconstructed (Loss: {loss:.4f})', color='blue', linestyle='--')
-        plt.title("Anomalous Dishwasher Cycle vs. Reconstruction")
-        plt.xlabel("Time Steps")
-        plt.ylabel("Power Consumption")
-        plt.legend()
-        plt.grid(True)
+        ax1.plot(original, label='Original Anomalous Signal', color=anomaly_color, linewidth=1.5)
+        ax1.plot(reconstructed, label=f'Reconstructed (Loss: {loss:.4f})', color=reconstructed_color, linestyle='--', linewidth=1.5)
+        ax1.set_title("Anomalous Dishwasher Cycle vs. Reconstruction", fontsize=14)
+        ax1.set_ylabel("Power Consumption", fontsize=12)
+        ax1.legend()
+        ax1.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plot_count += 1
     else:
         print("No anomalous sample found/returned from evaluation to plot.")
+        ax1.text(0.5, 0.5, 'No anomalous sample available', horizontalalignment='center', verticalalignment='center', transform=ax1.transAxes)
+        ax1.set_title("Anomalous Dishwasher Cycle vs. Reconstruction", fontsize=14)
 
-
-    # 2. Plot Normal Example (fetch from validation loader)
+    # --- Plot Normal Example --- 
+    ax2 = axes[1]
     model.eval()
     normal_found = False
     with torch.no_grad():
-        for batch in val_loader: # Iterate through val_loader to find a sample
+        # Only iterate enough to find one normal example
+        for batch in val_loader:
             seq = batch['sequence'].to(device)
             state_idx = batch['state_index'].to(device)
             labels = batch['label'].cpu().numpy()
-
-            # Ensure graph components are on the correct device
             node_features = node_features.to(device)
             adj_matrix = adj_matrix.to(device)
-
             output = model(seq, state_idx, node_features, adj_matrix)
 
-            # Find the first normal sample in the batch
             for i in range(seq.size(0)):
                 if labels[i] == 0: # Found a normal sample
-                    num_plots += 1
-                    plt.subplot(2, 1, num_plots)
                     original = seq[i].cpu().numpy()
                     reconstructed = output[i].cpu().numpy()
-                    # Calculate loss for this specific sample
                     loss = nn.L1Loss()(torch.tensor(reconstructed), torch.tensor(original)).item()
 
                     if scaler:
                         original = scaler.inverse_transform(original.reshape(-1, 1)).flatten()
                         reconstructed = scaler.inverse_transform(reconstructed.reshape(-1, 1)).flatten()
 
-                    plt.plot(original, label='Original Normal Signal', color='red', alpha=1.0)
-                    plt.plot(reconstructed, label=f'Reconstructed (Loss: {loss:.4f})', color='blue', linestyle='--')
-                    plt.title("Normal Dishwasher Cycle vs. Reconstruction")
-                    plt.xlabel("Time Steps")
-                    plt.ylabel("Power Consumption")
-                    plt.legend()
-                    plt.grid(True)
+                    ax2.plot(original, label='Original Normal Signal', color=original_color, linewidth=1.5)
+                    ax2.plot(reconstructed, label=f'Reconstructed (Loss: {loss:.4f})', color=reconstructed_color, linestyle='--', linewidth=1.5)
+                    ax2.set_title("Normal Dishwasher Cycle vs. Reconstruction", fontsize=14)
+                    ax2.set_xlabel("Time Steps", fontsize=12)
+                    ax2.set_ylabel("Power Consumption", fontsize=12)
+                    ax2.legend()
+                    ax2.grid(True, which='both', linestyle='--', linewidth=0.5)
                     normal_found = True
-                    break # Only need one normal example
+                    plot_count += 1
+                    break
             if normal_found:
-                break # Exit val_loader loop
+                break
 
     if not normal_found:
-         print("Could not find a normal sample in the first batch of val_loader to plot.")
+        print("Could not find a normal sample in the validation set to plot.")
+        ax2.text(0.5, 0.5, 'No normal sample found in validation set', horizontalalignment='center', verticalalignment='center', transform=ax2.transAxes)
+        ax2.set_title("Normal Dishwasher Cycle vs. Reconstruction", fontsize=14)
 
-
-    plt.tight_layout(pad=2.0) # Add padding between subplots
-    plt.savefig("reconstruction_examples_gcn.png")
-    print("Reconstruction plots saved to reconstruction_examples_gcn.png")
-    plt.close()
+    # --- Final Touches --- 
+    fig.tight_layout(pad=2.0)
+    
+    # Ensure plots directory exists
+    os.makedirs(plots_dir, exist_ok=True)
+    save_path = os.path.join(plots_dir, "reconstruction_examples_gcn.png")
+    plt.savefig(save_path)
+    print(f"Reconstruction plots saved to {save_path}")
+    plt.close(fig) # Close the specific figure
 
 # --- Original Transformer Utilities (Keep if needed, otherwise remove) ---
 # def calculate_threshold(...)
